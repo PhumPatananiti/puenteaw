@@ -1,0 +1,63 @@
+{
+  "title": "Temples, Khao Soi & Gentle Giants in Chiang Mai",
+  "summary": "A relaxed three days for four friends: the Old City's Lanna temples, the mountain-top views of Doi Suthep, and a day with rescued elephants. This is the built-in sample — add an API key to plan your own trips.",
+  "destination": { "name": "Chiang Mai", "country": "Thailand", "lat": 18.7883, "lng": 98.9853 },
+  "startDate": "",
+  "travelers": 4,
+  "travelerNames": ["Ploy", "Nam", "Ton", "Fah"],
+  "currency": "THB",
+  "budgetLevel": "moderate",
+  "bestTime": "November to February is cool and dry; expect warm afternoons around 30°C and cool mornings in the hills.",
+  "gettingAround": "Red songthaews (shared trucks) and Grab cover the city; charter a songthaew for Doi Suthep and book tours with hotel pickup for trips out of town.",
+  "days": [
+    {
+      "day": 1, "date": "", "title": "Old City temples and Lanna culture", "area": "Old City",
+      "items": [
+        { "time": "09:00", "name": "Wat Phra Singh", "kind": "sight", "description": "Start at the Old City's most revered temple, home to the Phra Singh Buddha and the gilded Viharn Lai Kham.", "placeQuery": "Wat Phra Singh, Chiang Mai", "wikiTitle": "Wat Phra Singh", "lat": 18.7887, "lng": 98.9819, "durationMin": 60, "unitPrice": 40, "qty": 1, "per": "person", "priceNote": "Entry to the Viharn Lai Kham", "tip": "Cover shoulders and knees; sarongs are lent at the gate." },
+        { "time": "10:30", "name": "Wat Chedi Luang", "kind": "sight", "description": "Wander around the massive 15th-century ruined chedi, once home to the Emerald Buddha.", "placeQuery": "Wat Chedi Luang, Chiang Mai", "wikiTitle": "Wat Chedi Luang", "lat": 18.7869, "lng": 98.9867, "durationMin": 75, "unitPrice": 50, "qty": 1, "per": "person", "priceNote": "Foreigner entry", "tip": "Monk Chat runs most afternoons if you want to ask the monks questions." },
+        { "time": "12:15", "name": "Khao Soi Mae Sai", "kind": "food", "description": "Lunch on Chiang Mai's signature curry noodle soup at a much-loved local shop.", "placeQuery": "Khao Soi Mae Sai, Chiang Mai", "wikiTitle": "", "lat": 18.7986, "lng": 98.9759, "durationMin": 45, "unitPrice": 70, "qty": 1, "per": "person", "priceNote": "A bowl plus a drink", "tip": "It closes mid-afternoon once the soup runs out." },
+        { "time": "14:00", "name": "Chiang Mai City Arts and Cultural Centre", "kind": "sight", "description": "Air-conditioned galleries that tell the story of Lanna history in an elegant colonial building behind the Three Kings Monument.", "placeQuery": "Chiang Mai City Arts and Cultural Centre", "wikiTitle": "Chiang Mai City Arts and Cultural Centre", "lat": 18.7904, "lng": 98.9877, "durationMin": 90, "unitPrice": 90, "qty": 1, "per": "person", "priceNote": "Adult entry", "tip": "" },
+        { "time": "17:00", "name": "Tha Phae Gate", "kind": "sight", "description": "Watch the pigeons and the evening light on the restored brick gate; on Sundays the walking street starts here.", "placeQuery": "Tha Phae Gate, Chiang Mai", "wikiTitle": "Tha Phae Gate", "lat": 18.7877, "lng": 98.9932, "durationMin": 45, "unitPrice": 0, "qty": 1, "per": "person", "priceNote": "", "tip": "" },
+        { "time": "18:30", "name": "Huen Phen", "kind": "food", "description": "Northern Thai dinner of sai oua sausage, nam prik ong and gaeng hang lay in an antique-filled house.", "placeQuery": "Huen Phen restaurant, Chiang Mai", "wikiTitle": "", "lat": 18.7863, "lng": 98.9822, "durationMin": 90, "unitPrice": 250, "qty": 1, "per": "person", "priceNote": "Shared dishes and drinks", "tip": "" }
+      ]
+    },
+    {
+      "day": 2, "date": "", "title": "Doi Suthep views and Nimman cafés", "area": "Doi Suthep & Nimmanhaemin",
+      "items": [
+        { "time": "08:00", "name": "Songthaew charter to Doi Suthep", "kind": "transport", "description": "Charter a red truck from the zoo/university stop up the winding mountain road and back.", "placeQuery": "Doi Suthep songthaew stop, Chiang Mai University", "wikiTitle": "", "lat": 18.8048, "lng": 98.9536, "durationMin": 40, "unitPrice": 800, "qty": 1, "per": "group", "priceNote": "Round trip with waiting time, whole truck", "tip": "Agree the price and the stops before you get in." },
+        { "time": "09:00", "name": "Wat Phra That Doi Suthep", "kind": "sight", "description": "Climb the 306-step naga staircase to the golden chedi and the view over the whole city.", "placeQuery": "Wat Phra That Doi Suthep", "wikiTitle": "Wat Phra That Doi Suthep", "lat": 18.8048, "lng": 98.9217, "durationMin": 90, "unitPrice": 30, "qty": 1, "per": "person", "priceNote": "Foreigner entry", "tip": "Take the tram up for 20 THB if the stairs are too much." },
+        { "time": "11:00", "name": "Bhubing Palace", "kind": "sight", "description": "Stroll the royal winter residence's rose gardens and cool pine forest.", "placeQuery": "Bhubing Palace, Chiang Mai", "wikiTitle": "Bhubing Palace", "lat": 18.8045, "lng": 98.8989, "durationMin": 75, "unitPrice": 50, "qty": 1, "per": "person", "priceNote": "Garden entry", "tip": "Closed when the royal family is in residence." },
+        { "time": "13:15", "name": "One Nimman", "kind": "food", "description": "Late lunch and coffee in the red-brick courtyard at the heart of Nimman.", "placeQuery": "One Nimman, Chiang Mai", "wikiTitle": "", "lat": 18.8000, "lng": 98.9680, "durationMin": 75, "unitPrice": 220, "qty": 1, "per": "person", "priceNote": "Lunch and a coffee", "tip": "" },
+        { "time": "15:00", "name": "Maya Lifestyle Shopping Center", "kind": "shopping", "description": "Browse Thai design shops and catch the sunset from the rooftop.", "placeQuery": "Maya Lifestyle Shopping Center, Chiang Mai", "wikiTitle": "Maya Lifestyle Shopping Center", "lat": 18.8025, "lng": 98.9671, "durationMin": 120, "unitPrice": 0, "qty": 1, "per": "person", "priceNote": "", "tip": "" },
+        { "time": "19:00", "name": "Chiang Mai Night Bazaar", "kind": "nightlife", "description": "Graze through food stalls and bargain for souvenirs at the city's sprawling night market.", "placeQuery": "Chiang Mai Night Bazaar", "wikiTitle": "Chiang Mai Night Bazaar", "lat": 18.7853, "lng": 99.0007, "durationMin": 120, "unitPrice": 200, "qty": 1, "per": "person", "priceNote": "Street food dinner", "tip": "Start your bargaining at about half the asking price." }
+      ]
+    },
+    {
+      "day": 3, "date": "", "title": "A day with rescued elephants", "area": "Mae Taeng valley",
+      "items": [
+        { "time": "08:00", "name": "Elephant Nature Park", "kind": "activity", "description": "Observe and feed rescued elephants at an ethical sanctuary — no riding, no shows.", "placeQuery": "Elephant Nature Park, Mae Taeng", "wikiTitle": "Elephant Nature Park", "lat": 19.2142, "lng": 98.8609, "durationMin": 480, "unitPrice": 2500, "qty": 1, "per": "person", "priceNote": "Single-day visit with hotel pickup and lunch", "tip": "Book a few weeks ahead; days sell out in high season." },
+        { "time": "17:30", "name": "Warorot Market", "kind": "shopping", "description": "Pick up dried fruit, nam prik and Lanna textiles at the locals' favourite market.", "placeQuery": "Warorot Market, Chiang Mai", "wikiTitle": "Warorot Market", "lat": 18.7907, "lng": 99.0006, "durationMin": 60, "unitPrice": 300, "qty": 1, "per": "person", "priceNote": "Snacks and small souvenirs", "tip": "" },
+        { "time": "19:00", "name": "Khantoke dinner at Old Chiang Mai Cultural Center", "kind": "food", "description": "A traditional Lanna banquet served on low tables with classical dance performances.", "placeQuery": "Old Chiang Mai Cultural Center", "wikiTitle": "", "lat": 18.7712, "lng": 98.9897, "durationMin": 120, "unitPrice": 690, "qty": 1, "per": "person", "priceNote": "Dinner and show", "tip": "" }
+      ]
+    }
+  ],
+  "extras": [
+    { "name": "Boutique hotel in the Old City (2 rooms × 3 nights)", "kind": "stay", "unitPrice": 1400, "qty": 6, "per": "group", "priceNote": "Twin rooms with breakfast, per room per night" },
+    { "name": "Airport transfers by Grab", "kind": "transport", "unitPrice": 180, "qty": 2, "per": "group", "priceNote": "Arrival and departure, one car" },
+    { "name": "Tourist SIM card", "kind": "other", "unitPrice": 299, "qty": 1, "per": "person", "priceNote": "8-day unlimited data" }
+  ],
+  "tips": [
+    "Carry small notes — songthaew drivers and market stalls rarely have change for 1,000 THB.",
+    "Temples ask for covered shoulders and knees; pack a light scarf.",
+    "Grab works well in the city but is scarce up on Doi Suthep, so keep your songthaew waiting.",
+    "Tap water is not drinkable; refill stations charge 1 THB per litre."
+  ],
+  "packing": ["Light scarf or sarong for temples", "Comfortable walking sandals", "Sunscreen and hat", "Insect repellent", "Light jacket for Doi Suthep mornings", "Reusable water bottle", "Clothes you don't mind getting muddy at the elephant park", "Small cash wallet"],
+  "phrases": [
+    { "local": "สวัสดีครับ / ค่ะ", "pronunciation": "sa-wat-dee krap / ka", "meaning": "Hello" },
+    { "local": "ขอบคุณ", "pronunciation": "khop khun", "meaning": "Thank you" },
+    { "local": "เท่าไหร่", "pronunciation": "tao rai", "meaning": "How much?" },
+    { "local": "ไม่เผ็ด", "pronunciation": "mai phet", "meaning": "Not spicy" },
+    { "local": "อร่อยมาก", "pronunciation": "a-roi mak", "meaning": "Very delicious" }
+  ]
+}

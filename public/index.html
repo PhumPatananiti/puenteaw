@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>PuenTeaw · เพื่อนเที่ยว</title>
+  <meta name="description" content="Describe a trip in your own words and get a day-by-day plan with a map, photos, weather and a per-person cost split." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23e2603b'/%3E%3Cpath d='M32 12c-8 0-14 6-14 14 0 10 14 26 14 26s14-16 14-26c0-8-6-14-14-14zm0 19a5 5 0 110-10 5 5 0 010 10z' fill='%23fff8ee'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" id="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 2.5c-3.6 0-6.5 2.8-6.5 6.4 0 4.6 6.5 12.6 6.5 12.6s6.5-8 6.5-12.6c0-3.6-2.9-6.4-6.5-6.4zm0 8.9a2.5 2.5 0 110-5 2.5 2.5 0 010 5z"/></svg>
+      </span>
+      <span class="brand-name">PuenTeaw <span class="brand-th">เพื่อนเที่ยว</span></span>
+    </a>
+    <nav class="topnav">
+      <button class="ghost" id="tripsBtn" type="button"><span data-t="myTrips"></span> <span class="count" id="tripCount"></span></button>
+      <div class="lang" role="group" aria-label="Language">
+        <button type="button" data-lang="en">EN</button>
+        <button type="button" data-lang="th">ไทย</button>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Composer -->
+    <section class="composer" id="composer">
+      <h1 class="headline">Where to, <em>puen</em>?</h1>
+      <p class="tagline" data-t="tagline"></p>
+      <form id="planForm" class="ask" autocomplete="off">
+        <textarea id="description" rows="4" maxlength="4000" required></textarea>
+        <div class="ask-bar">
+          <label class="currency"><span data-t="currency"></span>
+            <select id="currency">
+              <option>THB</option><option>USD</option><option>EUR</option><option>JPY</option><option>GBP</option>
+              <option>SGD</option><option>KRW</option><option>CNY</option><option>AUD</option><option>VND</option><option>MYR</option>
+            </select>
+          </label>
+          <span class="provider" id="provider"></span>
+          <button class="primary" id="planBtn" type="submit"><span data-t="plan"></span> <span aria-hidden="true">→</span></button>
+        </div>
+      </form>
+      <div class="examples">
+        <span class="examples-label" data-t="examples"></span>
+        <div id="exampleChips" class="chips"></div>
+      </div>
+    </section>
+
+    <!-- Progress -->
+    <section class="progress hidden" id="progress" aria-live="polite">
+      <svg class="route-anim" viewBox="0 0 300 60" aria-hidden="true">
+        <path d="M10 45 C 60 5, 100 5, 150 30 S 240 55, 290 15" />
+        <circle r="6" class="dot"><animateMotion dur="2.4s" repeatCount="indefinite" path="M10 45 C 60 5, 100 5, 150 30 S 240 55, 290 15" /></circle>
+      </svg>
+      <p class="stage" id="stage"></p>
+      <p class="sub" id="stageSub"></p>
+    </section>
+
+    <div class="error hidden" id="error" role="alert"></div>
+
+    <!-- Result -->
+    <section class="result hidden" id="result">
+      <div class="hero" id="hero">
+        <div class="hero-inner">
+          <p class="hero-place" id="heroPlace"></p>
+          <h2 id="title"></h2>
+          <p id="summary"></p>
+          <div class="pills" id="pills"></div>
+          <div class="hero-actions">
+            <button type="button" class="ghost light" id="newBtn" data-t="newTrip"></button>
+            <button type="button" class="ghost light" id="printBtn" data-t="print"></button>
+          </div>
+        </div>
+        <a class="hero-credit hidden" id="heroCredit" target="_blank" rel="noopener"></a>
+      </div>
+
+      <div class="notice hidden" id="sampleNote"></div>
+      <div class="weather hidden" id="weather"></div>
+
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="itinerary" class="active" data-t="tabItinerary"></button>
+        <button role="tab" data-tab="costs" data-t="tabCosts"></button>
+        <button role="tab" data-tab="essentials" data-t="tabEssentials"></button>
+      </div>
+
+      <div class="tab-panel" id="tab-itinerary">
+        <div class="split">
+          <div class="days" id="days"></div>
+          <aside class="map-col">
+            <div class="map-wrap">
+              <div class="map-filter chips" id="mapFilter"></div>
+              <div id="map"></div>
+            </div>
+          </aside>
+        </div>
+        <form class="refine" id="refineForm">
+          <h3 data-t="refineTitle"></h3>
+          <div class="refine-row">
+            <input id="change" maxlength="1000" />
+            <button class="primary" type="submit" data-t="refine"></button>
+          </div>
+        </form>
+      </div>
+
+      <div class="tab-panel hidden" id="tab-costs"></div>
+      <div class="tab-panel hidden" id="tab-essentials"></div>
+      <p class="footnote" id="footnote"></p>
+    </section>
+  </main>
+
+  <!-- Saved trips drawer -->
+  <div class="drawer hidden" id="drawer">
+    <div class="drawer-panel">
+      <div class="drawer-head"><h3 data-t="myTrips"></h3><button class="ghost" type="button" id="drawerClose" aria-label="Close">✕</button></div>
+      <ul id="tripList"></ul>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
