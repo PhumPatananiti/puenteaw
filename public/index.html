@@ -21,6 +21,7 @@
       <span class="brand-name">PuenTeaw <span class="brand-th">เพื่อนเที่ยว</span></span>
     </a>
     <nav class="topnav">
+      <button class="ghost hidden" id="accountBtn" type="button"></button>
       <button class="ghost" id="tripsBtn" type="button"><span data-t="myTrips"></span> <span class="count" id="tripCount"></span></button>
       <div class="lang" role="group" aria-label="Language">
         <button type="button" data-lang="en">EN</button>
@@ -116,6 +117,32 @@
       <p class="footnote" id="footnote"></p>
     </section>
   </main>
+
+  <!-- Account -->
+  <dialog id="authDialog" class="auth">
+    <form method="dialog" id="authForm" class="auth-form" novalidate>
+      <button type="button" class="auth-x" id="authClose" aria-label="Close">✕</button>
+      <div id="authIn">
+        <h3 id="authTitle"></h3>
+        <p class="auth-pitch" data-t="accountPitch"></p>
+        <label><span data-t="username"></span>
+          <input id="authUser" name="username" autocomplete="username" maxlength="30" required autocapitalize="none" spellcheck="false" />
+          <small id="authUserHint" data-t="usernameHint"></small>
+        </label>
+        <label><span data-t="password"></span>
+          <input id="authPass" name="password" type="password" maxlength="200" required />
+          <small id="authPassHint" data-t="passwordHint"></small>
+        </label>
+        <p class="auth-error hidden" id="authError" role="alert"></p>
+        <button class="primary" type="submit" id="authSubmit"></button>
+        <button class="linkish" type="button" id="authSwitch"></button>
+      </div>
+      <div id="authOut" class="hidden">
+        <h3 id="authWho"></h3>
+        <button class="primary" type="button" id="signOutBtn" data-t="signOut"></button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- Saved trips drawer -->
   <div class="drawer hidden" id="drawer">

@@ -10,11 +10,13 @@ import { weatherFor } from './enrich/weather.js'
 import { ratesFor } from './enrich/fx.js'
 import { pool } from './enrich/http.js'
 import * as db from './db.js'
+import * as auth from './auth.js'
 
 const app = express()
 app.disable('x-powered-by')
 app.set('trust proxy', 1) // Railway and similar hosts sit behind one proxy; use the real client IP
 app.use(express.json({ limit: '400kb' }))
+app.use('/api', auth.attachUser(db.isEnabled))
 app.use(express.static(fileURLToPath(new URL('../public/', import.meta.url)), { extensions: ['html'] }))
 
 // A plan costs real tokens, so cap requests per address (in memory, per process).
@@ -81,7 +83,7 @@ app.post('/api/plan', async (req, res) => {
   }
 
   const started = Date.now()
-  const log = { kind: previous ? 'refine' : 'new', prompt: previous ? change : description, provider: provider.id, tripId: null }
+  const log = { kind: previous ? 'refine' : 'new', prompt: previous ? change : description, provider: provider.id, tripId: null, userId: req.user?.id ?? null }
   let plan
   try {
     const today = new Date().toISOString().slice(0, 10)
@@ -98,8 +100,8 @@ app.post('/api/plan', async (req, res) => {
     let trip = null
     if (db.isEnabled()) {
       try {
-        if (previous && tripId && (await db.canEdit(tripId, editKey))) trip = { id: tripId }
-        else if (!previous) trip = await db.createTrip({ plan, people: [], split: {} })
+        if (previous && tripId && (await db.canEdit(tripId, editKey, req.user?.id))) trip = { id: tripId }
+        else if (!previous) trip = await db.createTrip({ plan, people: [], split: {} }, req.user?.id ?? null)
       } catch (err) {
         console.error('[db] could not save trip:', err.message)
       }
@@ -164,7 +166,7 @@ app.post('/api/trips', needDb, async (req, res) => {
   if (!allow(`save:${req.ip}`, 60)) return res.status(429).json({ error: 'Too many saves from this address. Try again later.' })
   const data = tripData(req.body)
   if (!data) return res.status(400).json({ error: 'That trip could not be saved.' })
-  res.status(201).json(await db.createTrip(data))
+  res.status(201).json(await db.createTrip(data, req.user?.id ?? null))
 })
 
 app.post('/api/trips/summaries', needDb, async (req, res) => {
@@ -176,21 +178,72 @@ app.get('/api/trips/:id', needDb, async (req, res) => {
   if (!db.isTripId(req.params.id)) return res.status(404).json({ error: 'Trip not found.' })
   const trip = await db.getTrip(req.params.id)
   if (!trip) return res.status(404).json({ error: 'Trip not found.' })
-  res.json({ ...trip, canEdit: await db.canEdit(trip.id, editKeyOf(req)) })
+  res.json({ ...trip, canEdit: await db.canEdit(trip.id, editKeyOf(req), req.user?.id) })
 })
 
 app.put('/api/trips/:id', needDb, async (req, res) => {
   if (!db.isTripId(req.params.id)) return res.status(404).json({ error: 'Trip not found.' })
   const data = tripData(req.body)
   if (!data) return res.status(400).json({ error: 'That trip could not be saved.' })
-  const result = await db.updateTrip(req.params.id, editKeyOf(req), data)
+  const result = await db.updateTrip(req.params.id, editKeyOf(req), data, req.user?.id)
   res.status(STATUS[result]).json({ ok: result === 'ok' })
 })
 
 app.delete('/api/trips/:id', needDb, async (req, res) => {
   if (!db.isTripId(req.params.id)) return res.status(404).json({ error: 'Trip not found.' })
-  const result = await db.deleteTrip(req.params.id, editKeyOf(req))
+  const result = await db.deleteTrip(req.params.id, editKeyOf(req), req.user?.id)
   res.status(STATUS[result]).json({ ok: result === 'ok' })
+})
+
+/* ── accounts (username + password) ─────────────────────────────── */
+
+const needUser = (req, res, next) => (req.user ? next() : res.status(401).json({ error: 'Please sign in.' }))
+const me = (u) => ({ id: String(u.id), username: u.username })
+
+function credentials(body) {
+  const username = String(body?.username ?? '').trim().normalize('NFKC')
+  const password = String(body?.password ?? '')
+  return { username, password }
+}
+
+app.get('/api/auth/me', (req, res) => {
+  res.json({ enabled: db.isEnabled(), user: req.user ? me(req.user) : null })
+})
+
+app.post('/api/auth/register', needDb, async (req, res) => {
+  if (!allow(`register:${req.ip}`, 10)) return res.status(429).json({ error: 'too_many' })
+  const { username, password } = credentials(req.body)
+  if (!auth.USERNAME_RE.test(username)) return res.status(400).json({ error: 'bad_username' })
+  if (password.length < auth.MIN_PASSWORD || password.length > auth.MAX_PASSWORD) return res.status(400).json({ error: 'bad_password' })
+  const user = await auth.register(username, password)
+  if (user === 'taken') return res.status(409).json({ error: 'taken' })
+  auth.setSessionCookie(req, res, await auth.createSession(user.id))
+  res.status(201).json({ user: me(user) })
+})
+
+app.post('/api/auth/login', needDb, async (req, res) => {
+  if (!allow(`login:${req.ip}`, 20, 15 * 60_000)) return res.status(429).json({ error: 'too_many' })
+  const { username, password } = credentials(req.body)
+  const user = username && password ? await auth.checkLogin(username, password) : null
+  if (!user) return res.status(401).json({ error: 'wrong_login' })
+  auth.setSessionCookie(req, res, await auth.createSession(user.id))
+  res.json({ user: me(user) })
+})
+
+app.post('/api/auth/logout', async (req, res) => {
+  await auth.endSession(auth.readToken(req)).catch(() => {})
+  auth.clearSessionCookie(req, res)
+  res.json({ ok: true })
+})
+
+app.get('/api/me/trips', needDb, needUser, async (req, res) => {
+  res.json({ trips: await db.tripsOfUser(req.user.id) })
+})
+
+/** After signing in: move trips this browser made (it holds their edit keys) into the account. */
+app.post('/api/me/claim', needDb, needUser, async (req, res) => {
+  const pairs = (Array.isArray(req.body?.trips) ? req.body.trips : []).slice(0, 50)
+  res.json({ claimed: await db.claimTrips(req.user.id, pairs) })
 })
 
 app.use('/api', (err, _req, res, _next) => {

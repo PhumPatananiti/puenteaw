@@ -283,6 +283,22 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px) 64px
 
 .footnote { color: var(--muted); font-size: 13px; text-align: center; margin-top: 28px; }
 
+/* ── Account dialog ──────────────────────────────────── */
+.auth { border: 1px solid var(--line); border-radius: 22px; padding: 0; width: min(400px, calc(100% - 32px)); background: var(--paper); color: var(--ink); box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+.auth::backdrop { background: rgba(10,14,16,.45); }
+.auth-form { padding: 24px; position: relative; display: block; }
+.auth-form h3 { font: 700 24px var(--display); margin: 0 0 6px; }
+.auth-pitch { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+.auth-form label { display: block; margin-bottom: 12px; font-size: 14px; font-weight: 600; }
+.auth-form input { display: block; width: 100%; margin-top: 4px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--card); outline: 0; font-weight: 400; }
+.auth-form input:focus { border-color: var(--accent); }
+.auth-form small { color: var(--muted); font-weight: 400; font-size: 12.5px; }
+.auth-form .primary { width: 100%; margin-top: 6px; }
+.auth-error { background: var(--accent-soft); color: var(--accent); border-radius: 10px; padding: 8px 12px; font-size: 14px; margin: 0 0 8px; }
+.auth-x { position: absolute; right: 14px; top: 14px; border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 16px; }
+.linkish { display: block; margin: 12px auto 0; border: 0; background: none; color: var(--teal); cursor: pointer; font-size: 14px; font-weight: 600; }
+#accountBtn.signed { background: var(--teal-soft); color: var(--teal); border-color: transparent; font-weight: 600; }
+
 /* ── Drawer ──────────────────────────────────────────── */
 .drawer { position: fixed; inset: 0; z-index: 2000; background: rgba(10,14,16,.4); display: flex; justify-content: flex-end; }
 .drawer-panel { width: min(400px, 100%); background: var(--paper); height: 100%; padding: 18px; overflow-y: auto; box-shadow: -10px 0 30px rgba(0,0,0,.2); }

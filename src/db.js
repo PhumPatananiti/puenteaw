@@ -31,6 +31,27 @@ const MIGRATIONS = [
    );
    CREATE INDEX plan_requests_created_at_idx ON plan_requests (created_at);
    CREATE INDEX plan_requests_trip_id_idx ON plan_requests (trip_id);`,
+
+  // 2: accounts (username + password only) and who owns what
+  `CREATE TABLE users (
+     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+     username      text NOT NULL CHECK (char_length(username) BETWEEN 3 AND 30),
+     password_hash text NOT NULL,
+     created_at    timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE UNIQUE INDEX users_username_lower_key ON users (lower(username));
+   CREATE TABLE sessions (
+     token_hash text PRIMARY KEY,
+     user_id    bigint NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     expires_at timestamptz NOT NULL
+   );
+   CREATE INDEX sessions_user_id_idx ON sessions (user_id);
+   CREATE INDEX sessions_expires_at_idx ON sessions (expires_at);
+   ALTER TABLE trips ADD COLUMN user_id bigint REFERENCES users (id) ON DELETE SET NULL;
+   CREATE INDEX trips_user_id_updated_at_idx ON trips (user_id, updated_at DESC);
+   ALTER TABLE plan_requests ADD COLUMN user_id bigint REFERENCES users (id) ON DELETE SET NULL;
+   CREATE INDEX plan_requests_user_id_idx ON plan_requests (user_id);`,
 ]
 
 let pool = null
@@ -86,6 +107,9 @@ async function migrate() {
   }
 }
 
+/** For modules that own their own tables (auth). */
+export const query = (text, params) => pool.query(text, params)
+
 export async function closeDb() {
   await pool?.end().catch(() => {})
 }
@@ -108,13 +132,13 @@ const summaryOf = (data) => ({
 })
 
 /** Create a trip; returns { id, editKey }. The key is shown once and only its hash is stored. */
-export async function createTrip(data) {
+export async function createTrip(data, userId = null) {
   const id = newTripId()
   const editKey = randomBytes(24).toString('base64url')
   const s = summaryOf(data)
   await pool.query(
-    'INSERT INTO trips (id, edit_key_hash, title, destination, days, data) VALUES ($1, $2, $3, $4, $5, $6)',
-    [id, hashKey(editKey).toString('hex'), s.title, s.destination, s.days, data],
+    'INSERT INTO trips (id, edit_key_hash, title, destination, days, data, user_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+    [id, hashKey(editKey).toString('hex'), s.title, s.destination, s.days, data, userId],
   )
   return { id, editKey }
 }
@@ -124,18 +148,24 @@ export async function getTrip(id) {
   return rows[0] ? { id: rows[0].id, data: rows[0].data, updatedAt: rows[0].updated_at } : null
 }
 
-async function keyMatches(id, editKey) {
-  if (!editKey) return false
-  const { rows } = await pool.query('SELECT edit_key_hash FROM trips WHERE id = $1', [id])
+/**
+ * May this caller change the trip? Its owner account may; so may whoever
+ * holds the edit key (trips made before signing in, or on another browser).
+ * Returns null when the trip does not exist.
+ */
+async function keyMatches(id, editKey, userId = null) {
+  const { rows } = await pool.query('SELECT edit_key_hash, user_id FROM trips WHERE id = $1', [id])
   if (!rows[0]) return null
+  if (userId != null && rows[0].user_id != null && String(rows[0].user_id) === String(userId)) return true
+  if (!editKey) return false
   const stored = Buffer.from(rows[0].edit_key_hash, 'hex')
   const given = hashKey(editKey)
   return stored.length === given.length && timingSafeEqual(stored, given)
 }
 
 /** 'ok' | 'forbidden' | 'missing' */
-export async function updateTrip(id, editKey, data) {
-  const ok = await keyMatches(id, editKey)
+export async function updateTrip(id, editKey, data, userId = null) {
+  const ok = await keyMatches(id, editKey, userId)
   if (ok === null) return 'missing'
   if (!ok) return 'forbidden'
   const s = summaryOf(data)
@@ -146,16 +176,37 @@ export async function updateTrip(id, editKey, data) {
   return 'ok'
 }
 
-export async function deleteTrip(id, editKey) {
-  const ok = await keyMatches(id, editKey)
+export async function deleteTrip(id, editKey, userId = null) {
+  const ok = await keyMatches(id, editKey, userId)
   if (ok === null) return 'missing'
   if (!ok) return 'forbidden'
   await pool.query('DELETE FROM trips WHERE id = $1', [id])
   return 'ok'
 }
 
-export async function canEdit(id, editKey) {
-  return (await keyMatches(id, editKey)) === true
+export async function canEdit(id, editKey, userId = null) {
+  return (await keyMatches(id, editKey, userId)) === true
+}
+
+/** Trips belonging to an account, newest first. */
+export async function tripsOfUser(userId) {
+  const { rows } = await pool.query(
+    'SELECT id, title, destination, days, updated_at FROM trips WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 200',
+    [userId],
+  )
+  return rows.map((r) => ({ id: r.id, title: r.title, destination: r.destination, days: r.days, updatedAt: r.updated_at }))
+}
+
+/** Move unowned trips into an account when the caller proves it holds their edit keys. Returns the claimed ids. */
+export async function claimTrips(userId, pairs) {
+  const claimed = []
+  for (const { id, editKey } of pairs) {
+    if (!isTripId(id) || typeof editKey !== 'string') continue
+    if ((await keyMatches(id, editKey)) !== true) continue
+    const { rowCount } = await pool.query('UPDATE trips SET user_id = $2 WHERE id = $1 AND user_id IS NULL', [id, userId])
+    if (rowCount) claimed.push(id)
+  }
+  return claimed
 }
 
 export async function tripSummaries(ids) {
@@ -172,9 +223,9 @@ export async function logPlanRequest(entry) {
   if (!enabled) return
   try {
     await pool.query(
-      `INSERT INTO plan_requests (trip_id, kind, prompt, provider, ok, error, input_tokens, output_tokens, duration_ms)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [entry.tripId ?? null, entry.kind, String(entry.prompt).slice(0, 4000), entry.provider, entry.ok,
+      `INSERT INTO plan_requests (trip_id, user_id, kind, prompt, provider, ok, error, input_tokens, output_tokens, duration_ms)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [entry.tripId ?? null, entry.userId ?? null, entry.kind, String(entry.prompt).slice(0, 4000), entry.provider, entry.ok,
         entry.error ? String(entry.error).slice(0, 500) : null, entry.usage?.in ?? null, entry.usage?.out ?? null, Math.round(entry.ms)],
     )
   } catch (err) {

@@ -15,6 +15,7 @@ const S = {
   lang: 'en',
   provider: { id: '', label: '' },
   storage: 'browser', // 'server' when the backend has Postgres
+  user: null, // { id, username } when signed in
   trip: null, // { id, editKey?, owned, plan, people, split, hero, weather, packed, savedAt }
   tab: 'itinerary',
   mapDay: 'all',
@@ -49,19 +50,19 @@ async function persist() {
   cacheTrip(trip)
   if (S.storage !== 'server') return
   try {
-    if (!trip.editKey) {
-      // a trip made before the server had a database: upload it once
+    if (!(trip.onServer ?? Boolean(trip.editKey))) {
+      // not on the server yet (made before it had a database, or a copy of a shared trip): upload it
       const r = await fetch('/api/trips', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ data: tripData(trip) }) })
       if (!r.ok) throw new Error(String(r.status))
       const { id, editKey } = await r.json()
       const oldId = trip.id
-      Object.assign(trip, { id, editKey })
+      Object.assign(trip, { id, editKey, onServer: true })
       cacheTrip(trip, oldId)
       if (S.trip === trip) { history.replaceState(null, '', `#trip=${id}`); renderShareState() }
       return
     }
     const r = await fetch(`/api/trips/${enc(trip.id)}`, {
-      method: 'PUT', headers: { 'content-type': 'application/json', 'x-edit-key': trip.editKey }, body: JSON.stringify({ data: tripData(trip) }),
+      method: 'PUT', headers: { 'content-type': 'application/json', ...(trip.editKey ? { 'x-edit-key': trip.editKey } : {}) }, body: JSON.stringify({ data: tripData(trip) }),
     })
     if (!r.ok) throw new Error(String(r.status))
   } catch {
@@ -92,6 +93,7 @@ function applyLang() {
   $('#change').placeholder = t('refinePlaceholder')
   $('#exampleChips').innerHTML = t('exampleTrips').map((ex, i) => `<button type="button" class="chip" data-ex="${i}">${h(ex)}</button>`).join('')
   renderProvider()
+  renderAccount()
   if (S.trip) renderResult()
 }
 
@@ -238,6 +240,7 @@ function handleEvent(ev, previousTrip) {
       S.trip = {
         id: ev.trip?.id ?? previousTrip?.id ?? newId(),
         editKey: ev.trip?.editKey ?? previousTrip?.editKey,
+        onServer: Boolean(ev.trip) || Boolean(previousTrip?.onServer),
         owned: true,
         plan, people, split: {}, hero: previousTrip?.hero ?? null, weather: null, packed: {}, savedAt: Date.now(),
       }
@@ -301,7 +304,7 @@ function renderResult() {
 function renderShareState() {
   const shared = S.trip && !S.trip.owned
   $('#sharedNote').classList.toggle('hidden', !shared)
-  $('#shareBtn').classList.toggle('hidden', !(S.storage === 'server' && S.trip?.editKey))
+  $('#shareBtn').classList.toggle('hidden', !(S.storage === 'server' && S.trip?.owned && (S.trip.onServer ?? Boolean(S.trip.editKey))))
   $('#refineForm').classList.toggle('hidden', shared)
 }
 
@@ -572,11 +575,23 @@ function renderTripCount() {
   const n = trips().length
   $('#tripCount').textContent = n ? String(n) : ''
 }
-function renderTripList() {
-  const list = trips()
-  $('#tripList').innerHTML = list.length
-    ? list.map((tr) => `<li><div class="t" data-open="${tr.id}"><b>${h(tr.plan.title)}</b><span>${h(tr.plan.destination.name)} · ${h(t('days', tr.plan.days.length))} · ${h(new Date(tr.savedAt).toLocaleDateString(S.lang === 'th' ? 'th-TH' : 'en-GB'))}</span></div><button class="ghost" type="button" data-deltrip="${tr.id}">${h(t('delete'))}</button></li>`).join('')
-    : `<li class="empty">${h(t('noTrips'))}</li>`
+let accountTrips = []
+async function renderTripList() {
+  let rows = trips().map((tr) => ({ id: tr.id, title: tr.plan.title, place: tr.plan.destination.name, days: tr.plan.days.length, when: tr.savedAt }))
+  if (S.user) {
+    try {
+      const r = await fetch('/api/me/trips')
+      if (r.ok) {
+        accountTrips = (await r.json()).trips
+        rows = accountTrips.map((tr) => ({ id: tr.id, title: tr.title, place: tr.destination, days: tr.days, when: tr.updatedAt }))
+      }
+    } catch { /* offline: show the browser's copy */ }
+  }
+  const head = S.user ? `<li class="empty">${h(t('signedInAs', S.user.username))}</li>` : ''
+  $('#tripList').innerHTML = head + (rows.length
+    ? rows.map((tr) => `<li><div class="t" data-open="${h(tr.id)}"><b>${h(tr.title)}</b><span>${h(tr.place)} · ${h(t('days', tr.days))} · ${h(new Date(tr.when).toLocaleDateString(S.lang === 'th' ? 'th-TH' : 'en-GB'))}</span></div><button class="ghost" type="button" data-deltrip="${h(tr.id)}">${h(t('delete'))}</button></li>`).join('')
+    : `<li class="empty">${h(t('noTrips'))}</li>`)
+  if (S.user) $('#tripCount').textContent = rows.length ? String(rows.length) : ''
 }
 async function openTrip(id) {
   const cached = trips().find((x) => x.id === id)
@@ -592,7 +607,7 @@ async function openTrip(id) {
     if (!r.ok) return Boolean(cached)
     const j = await r.json()
     const owned = Boolean(j.canEdit)
-    const trip = { packed: {}, split: {}, ...j.data, id: j.id, editKey: owned ? cached?.editKey : undefined, owned }
+    const trip = { packed: {}, split: {}, ...j.data, id: j.id, editKey: owned ? cached?.editKey : undefined, owned, onServer: true }
     // the server copy wins unless this browser holds unsaved newer edits
     if (!cached || !owned || new Date(j.updatedAt).getTime() >= (cached.savedAt ?? 0) - 2000) showTrip(trip)
     return true
@@ -669,7 +684,7 @@ function bind() {
     } catch { /* dismissed */ }
   })
   $('#saveCopyBtn').addEventListener('click', async () => {
-    const copy = { ...S.trip, id: newId(), editKey: undefined, owned: true }
+    const copy = { ...S.trip, id: newId(), editKey: undefined, owned: true, onServer: false }
     S.trip = copy
     await persist() // uploads it and gives it a new id and edit key
     renderShareState()
@@ -780,6 +795,14 @@ function bind() {
     saveTrip()
   })
 
+  // account
+  $('#accountBtn').addEventListener('click', () => openAuth('in'))
+  $('#authClose').addEventListener('click', () => $('#authDialog').close())
+  $('#authSwitch').addEventListener('click', () => openAuth(authMode === 'up' ? 'in' : 'up'))
+  $('#authForm').addEventListener('submit', (e) => { e.preventDefault(); submitAuth() })
+  $('#signOutBtn').addEventListener('click', signOut)
+  $('#authDialog').addEventListener('click', (e) => { if (e.target.id === 'authDialog') $('#authDialog').close() })
+
   // drawer
   $('#tripsBtn').addEventListener('click', () => { renderTripList(); $('#drawer').classList.remove('hidden') })
   $('#drawerClose').addEventListener('click', () => $('#drawer').classList.add('hidden'))
@@ -789,9 +812,12 @@ function bind() {
     if (open) { openTrip(open.dataset.open); $('#drawer').classList.add('hidden'); return }
     const del = e.target.closest('[data-deltrip]')
     if (del) {
-      const gone = trips().find((x) => x.id === del.dataset.deltrip)
-      if (S.storage === 'server' && gone?.editKey) {
-        fetch(`/api/trips/${enc(gone.id)}`, { method: 'DELETE', headers: { 'x-edit-key': gone.editKey } }).catch(() => {})
+      const id = del.dataset.deltrip
+      const gone = trips().find((x) => x.id === id)
+      if (S.storage === 'server' && (gone?.editKey || S.user)) {
+        fetch(`/api/trips/${enc(id)}`, { method: 'DELETE', headers: gone?.editKey ? { 'x-edit-key': gone.editKey } : {} })
+          .catch(() => {})
+          .finally(() => S.user && renderTripList())
       }
       store.set(STORE_KEY, trips().filter((x) => x.id !== del.dataset.deltrip))
       if (S.trip?.id === del.dataset.deltrip) resetToComposer()
@@ -800,6 +826,83 @@ function bind() {
     }
   })
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#drawer').classList.add('hidden') })
+}
+
+/* ── account ────────────────────────────────────────────────────── */
+let authMode = 'in' // 'in' | 'up'
+function renderAccount() {
+  const btn = $('#accountBtn')
+  btn.classList.toggle('hidden', S.storage !== 'server')
+  btn.classList.toggle('signed', Boolean(S.user))
+  btn.textContent = S.user ? `👤 ${S.user.username}` : t('signIn')
+}
+function openAuth(mode) {
+  authMode = mode ?? authMode
+  const signed = Boolean(S.user)
+  $('#authIn').classList.toggle('hidden', signed)
+  $('#authOut').classList.toggle('hidden', !signed)
+  if (signed) {
+    $('#authWho').textContent = t('signedInAs', S.user.username)
+  } else {
+    $('#authTitle').textContent = authMode === 'up' ? t('signUp') : t('signIn')
+    $('#authSubmit').textContent = authMode === 'up' ? t('signUp') : t('signIn')
+    $('#authSwitch').textContent = authMode === 'up' ? t('haveAccount') : t('noAccount')
+    $('#authPass').autocomplete = authMode === 'up' ? 'new-password' : 'current-password'
+    $('#authUserHint').classList.toggle('hidden', authMode !== 'up')
+    $('#authPassHint').classList.toggle('hidden', authMode !== 'up')
+    $('#authError').classList.add('hidden')
+  }
+  const dlg = $('#authDialog')
+  if (!dlg.open) dlg.showModal()
+  if (!signed) $('#authUser').focus()
+}
+async function submitAuth() {
+  const username = $('#authUser').value.trim()
+  const password = $('#authPass').value
+  const err = (code) => { $('#authError').textContent = t('errors')[code] ?? t('errorGeneric'); $('#authError').classList.remove('hidden') }
+  $('#authSubmit').disabled = true
+  try {
+    const r = await fetch(authMode === 'up' ? '/api/auth/register' : '/api/auth/login', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username, password }),
+    })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok) return err(j.error)
+    $('#authPass').value = ''
+    $('#authDialog').close()
+    await signedIn(j.user)
+    toast(t('welcome', j.user.username))
+  } catch {
+    err('')
+  } finally {
+    $('#authSubmit').disabled = false
+  }
+}
+/** Move this browser's trips into the account, then reload the current one so it is editable everywhere. */
+async function signedIn(user) {
+  S.user = user
+  renderAccount()
+  const pairs = trips().filter((x) => x.editKey).map((x) => ({ id: x.id, editKey: x.editKey }))
+  if (pairs.length) await fetch('/api/me/claim', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ trips: pairs }) }).catch(() => {})
+  renderTripList()
+  if (S.trip) openTrip(S.trip.id)
+}
+async function signOut() {
+  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
+  S.user = null
+  // the trips live in the account now; do not leave them on a shared computer
+  store.set(STORE_KEY, [])
+  $('#authDialog').close()
+  renderAccount()
+  renderTripCount()
+  resetToComposer()
+}
+async function loadAccount() {
+  try {
+    const r = await fetch('/api/auth/me').then((x) => x.json())
+    S.user = r.user
+  } catch { S.user = null }
+  renderAccount()
+  if (S.user) renderTripList()
 }
 
 const fxCache = new Map()
@@ -828,6 +931,7 @@ bind()
 applyLang()
 renderTripCount()
 await loadProvider()
+await loadAccount()
 const fromHash = location.hash.match(/trip=([\w-]+)/)
 if (fromHash) openTrip(fromHash[1])
 window.addEventListener('hashchange', () => {
