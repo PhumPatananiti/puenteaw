@@ -23,6 +23,7 @@ const item = obj({
   kind: { type: 'string', enum: KINDS },
   description: str('One or two vivid sentences on what the traveler does here.'),
   placeQuery: str('Search text that finds this exact place on Google Maps, including the city.'),
+  mapsUrl: str('The traveler\'s own Google Maps link for this stop, copied exactly from "Linked places". "" for every other stop.'),
   wikiTitle: str('Exact English Wikipedia article title for the place, or "" if it has none.'),
   lat: num('Latitude, decimal degrees.'),
   lng: num('Longitude, decimal degrees.'),
@@ -70,6 +71,7 @@ export const PLAN_SCHEMA = obj({
   }), '4 to 6 useful local phrases, or [] if the traveler already speaks the local language.'),
 })
 
+const MAPS_URL_RE = /^https:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|(www\.)?google\.[a-z.]+\/maps)\//
 const n = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d)
 const s = (v) => (typeof v === 'string' ? v.trim() : '')
 const list = (v) => (Array.isArray(v) ? v : [])
@@ -118,6 +120,7 @@ export function normalizePlan(raw, fallbackCurrency = 'THB') {
         kind: kind(it.kind),
         description: s(it.description),
         placeQuery: s(it.placeQuery) || s(it.name),
+        mapsUrl: MAPS_URL_RE.test(s(it.mapsUrl)) ? s(it.mapsUrl) : '',
         wikiTitle: s(it.wikiTitle),
         lat: n(it.lat),
         lng: n(it.lng),

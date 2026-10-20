@@ -9,6 +9,7 @@ import { locate } from './enrich/geocode.js'
 import { weatherFor } from './enrich/weather.js'
 import { ratesFor } from './enrich/fx.js'
 import { pool } from './enrich/http.js'
+import { resolveMapLinks, pinLinkedPlaces } from './enrich/maplinks.js'
 import * as db from './db.js'
 import * as auth from './auth.js'
 
@@ -36,7 +37,7 @@ setInterval(() => {
 
 app.get('/api/health', (_req, res) => {
   const p = pickProvider()
-  res.json({ ok: true, provider: p.id, label: p.label(), currency: config.DEFAULT_CURRENCY, storage: db.isEnabled() ? 'server' : 'browser' })
+  res.json({ ok: true, provider: p?.id ?? 'none', label: p?.label() ?? '', currency: config.DEFAULT_CURRENCY, storage: db.isEnabled() ? 'server' : 'browser' })
 })
 
 app.get('/api/fx', async (req, res) => {
@@ -57,6 +58,9 @@ app.post('/api/plan', async (req, res) => {
     return res.status(400).json({ error: previous ? 'Describe the change in a few words.' : 'Describe your trip in at least a few words.' })
   }
   const provider = pickProvider()
+  if (!provider) {
+    return res.status(503).json({ error: 'The trip planner is not configured on this server yet (GOOGLE_API_KEY is missing).' })
+  }
   if (provider.id !== 'mock' && !allow(`plan:${req.ip}`)) {
     return res.status(429).json({ error: 'Too many plans from this address in the last hour. Try again later.' })
   }
@@ -88,12 +92,14 @@ app.post('/api/plan', async (req, res) => {
   try {
     const today = new Date().toISOString().slice(0, 10)
     const prevForModel = previous ? stripForModel(previous) : null
+    const linked = await resolveMapLinks(previous ? change : description)
+    if (linked.length) send({ type: 'linked', count: linked.length })
     const { json, usage } = await provider.generate({
       system: SYSTEM,
-      user: userTurn({ description, today, currency, previous: prevForModel, change }),
+      user: userTurn({ description, today, currency, previous: prevForModel, change, linked }),
       onText,
     })
-    plan = normalizePlan(json, currency)
+    plan = pinLinkedPlaces(normalizePlan(json, currency), linked)
     if (!plan.days.length) throw new Error('The planner returned no days. Try describing the trip again.')
     log.usage = usage
     // Save new trips straight away so the share link works even if the tab closes.
@@ -125,7 +131,8 @@ app.post('/api/plan', async (req, res) => {
     weatherFor(plan.destination, plan.startDate, plan.days.length).then((weather) => weather && send({ type: 'weather', weather })),
     pool(stops, 6, async (it) => {
       if (closed) return
-      const geo = await locate(it, plan.destination)
+      // a stop the traveler linked is already pinned exactly; only look up its photo
+      const geo = it.pinned ? { lat: it.lat, lng: it.lng, verified: true } : await locate(it, plan.destination)
       const target = geo ? { ...it, lat: geo.lat, lng: geo.lng } : it
       const photo = await photoFor(target, city)
       send({ type: 'patch', id: it.id, ...(geo ?? {}), photo })
@@ -141,7 +148,7 @@ function stripForModel(p) {
   const { days = [], extras = [], hero, weather, ...rest } = p
   return {
     ...rest,
-    days: days.map(({ items = [], ...d }) => ({ ...d, items: items.map(({ id, photo, verified, ...it }) => it) })),
+    days: days.map(({ items = [], ...d }) => ({ ...d, items: items.map(({ id, photo, verified, pinned, ...it }) => it) })),
     extras: extras.map(({ id, ...x }) => x),
   }
 }
@@ -254,7 +261,8 @@ app.use('/api', (err, _req, res, _next) => {
 await db.initDb()
 const server = app.listen(config.PORT, () => {
   const p = pickProvider()
-  console.log(`PuenTeaw on http://localhost:${config.PORT} — planner: ${p.label()} — trips: ${db.isEnabled() ? 'Postgres' : 'browser only'}`)
+  if (!p) console.error('[config] No GOOGLE_API_KEY (or GEMINI_API_KEY) on this service — planning is disabled until it is set.')
+  console.log(`PuenTeaw on http://localhost:${config.PORT} — planner: ${p?.label() ?? 'NOT CONFIGURED'} — trips: ${db.isEnabled() ? 'Postgres' : 'browser only'}`)
 })
 // Railway sends SIGTERM on redeploy: finish open requests, then close the pool.
 process.on('SIGTERM', () => server.close(() => db.closeDb().then(() => process.exit(0))))

@@ -10,6 +10,8 @@ Planning:
 - Order stops so each day flows geographically; include meals and the paid transport legs between distant stops.
 - Use real, currently operating places with accurate coordinates. Never invent a venue.
 - Give each stop a placeQuery that finds the exact place on Google Maps, and the English Wikipedia title when one exists.
+- Places the traveler linked (listed under "Linked places") are fixed choices: include every one at the point in the trip where they mentioned it, use its exact name and coordinates, and copy its link into mapsUrl. Leave mapsUrl "" for stops you chose.
+- Follow the traveler's own schedule (start times, check-out time, which day does what) and fill the gaps around it with fitting suggestions, such as a coffee place near a market they named.
 
 Prices:
 - Estimate realistic current prices in the plan currency for the stated budget level.
@@ -20,10 +22,16 @@ Prices:
 
 Write every text field in the language the traveler wrote in. Keep proper nouns recognisable (add the local or English name in brackets when helpful).`
 
-export function userTurn({ description, today, currency, previous, change }) {
+export function userTurn({ description, today, currency, previous, change, linked = [] }) {
   const lines = [
     `Today is ${today}. If no currency is stated or implied, price in ${currency}.`,
   ]
+  if (linked.length) {
+    lines.push('', 'Linked places (resolved from the traveler\'s Google Maps links):')
+    for (const l of linked) {
+      lines.push(`- ${l.url} → ${l.name || 'dropped pin'}${l.lat != null ? ` (${l.lat}, ${l.lng})` : ''}`)
+    }
+  }
   if (previous && change) {
     lines.push(
       '',

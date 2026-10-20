@@ -2,6 +2,7 @@
 
 Describe a trip in your own words (English or Thai) and PuenTeaw plans it with Gemini:
 
+- **Your own places**: paste Google Maps links (`https://maps.app.goo.gl/…`) into the description. The server resolves each one to its exact place and pin, the plan puts those places where you mentioned them and fills in around them, and each of those stops links back to your own map link.
 - **Itinerary**: day by day, with a time, photo, description, price and local tip for every stop
 - **Map**: numbered pins and a route for each day (OpenStreetMap), plus Google Maps links for each place, directions between stops and a link that opens the whole day's route
 - **Photos**: from Wikipedia and Wikimedia Commons, each credited and linked to its source
@@ -24,7 +25,7 @@ npm run dev              # http://localhost:4100
 
 Get a Gemini key at https://aistudio.google.com. The default model is `gemini-3.5-flash-lite`; change `GOOGLE_MODEL` in `.env` to use another one. **Restart after you edit `.env`**, because the dev watcher only reloads code files.
 
-Without a key the app runs on a built-in sample trip (Chiang Mai), so you can try the interface.
+Without a key, local development runs on a built-in sample trip (Chiang Mai) so you can try the interface. A deployed server (Railway, or `NODE_ENV=production`) never serves the sample: without a key it shows "planner not configured", and its log says so at start.
 
 For saved trips locally: `createdb puenteaw_dev` and set `DATABASE_URL=postgres://localhost/puenteaw_dev`. Tables are created automatically on start.
 
@@ -34,7 +35,7 @@ Claude also works as the planner: set `LLM_PROVIDER=anthropic` and `ANTHROPIC_AP
 
 1. Add the GitHub repo as a service, and add a **Postgres** database to the same project.
 2. Open the puenteaw service, go to **Variables**, and add:
-   - `GOOGLE_API_KEY`: your Gemini key
+   - `GOOGLE_API_KEY` (or `GEMINI_API_KEY`): your Gemini key
    - `DATABASE_URL`: `${{Postgres.DATABASE_URL}}` (a reference variable, so it uses Railway's private network)
 3. Under **Settings → Networking**, choose **Generate Domain**.
 
@@ -68,6 +69,7 @@ browser ──POST /api/plan──▶ Gemini (JSON schema, streamed)
 | `src/providers/` | `google.js` (default), `anthropic.js` (optional), and `mock.js` (the sample trip) |
 | `src/auth.js` | Password hashing (scrypt), sessions, the httpOnly cookie |
 | `src/db.js` | Postgres pool, versioned migrations, trip storage, planner log |
+| `src/enrich/maplinks.js` | Resolves Google Maps short links to place names and exact pins |
 | `src/enrich/` | Location check, photos, weather, exchange rates |
 | `public/costs.js` | The per-person split math (pure functions, shared by the page and the tests) |
 | `public/app.js` | The page |

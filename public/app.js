@@ -123,13 +123,16 @@ function km(a, b) {
   const x = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2
   return 2 * R * Math.asin(Math.sqrt(x))
 }
-const mapsPlace = (it) => `https://www.google.com/maps/search/?api=1&query=${enc(it.placeQuery || it.name)}`
+// The traveler's own link wins; otherwise search Google Maps for the place.
+const mapsPlace = (it) => safeUrl(it.mapsUrl) || `https://www.google.com/maps/search/?api=1&query=${enc(it.placeQuery || it.name)}`
+// a linked place is pinned exactly, so route to its coordinates rather than a name search
+const where = (it) => (it.mapsUrl && hasCoords(it) ? `${it.lat},${it.lng}` : it.placeQuery || it.name)
 function mapsDirections(from, to) {
   const mode = hasCoords(from) && hasCoords(to) && km(from, to) < 1.5 ? 'walking' : 'driving'
-  return `https://www.google.com/maps/dir/?api=1&origin=${enc(from.placeQuery || from.name)}&destination=${enc(to.placeQuery || to.name)}&travelmode=${mode}`
+  return `https://www.google.com/maps/dir/?api=1&origin=${enc(where(from))}&destination=${enc(where(to))}&travelmode=${mode}`
 }
 function mapsDayRoute(items) {
-  const pts = items.map((it) => it.placeQuery || it.name)
+  const pts = items.map(where)
   if (pts.length < 2) return pts.length ? mapsPlace(items[0]) : null
   const mid = pts.slice(1, -1).slice(0, 8)
   return `https://www.google.com/maps/dir/?api=1&origin=${enc(pts[0])}&destination=${enc(pts.at(-1))}${mid.length ? `&waypoints=${enc(mid.join('|'))}` : ''}`
@@ -227,6 +230,9 @@ function handleEvent(ev, previousTrip) {
     case 'meta':
       S.provider = { id: ev.provider, label: ev.label }
       renderProvider()
+      break
+    case 'linked':
+      showStage(t('stageLinks', ev.count))
       break
     case 'progress':
       showStage(ev.extras ? t('stageExtras') : ev.day > 0 ? t('stageDay', ev.day) : t('stageRead'), t('received', ev.chars.toLocaleString()))
@@ -397,7 +403,7 @@ function renderDays() {
                 ${it.priceNote ? `<p style="font-size:13px;margin-top:4px">💰 ${h(it.priceNote)}</p>` : ''}
                 ${it.tip ? `<p class="tip">💡 ${h(it.tip)}</p>` : ''}
                 <div class="links">
-                  <a href="${h(mapsPlace(it))}" target="_blank" rel="noopener">📍 ${h(t('openMaps'))}</a>
+                  <a href="${h(mapsPlace(it))}" target="_blank" rel="noopener">📍 ${h(it.mapsUrl ? t('yourLink') : t('openMaps'))}</a>
                   ${prev ? `<a href="${h(mapsDirections(prev, it))}" target="_blank" rel="noopener">🧭 ${h(t('directions'))}</a>` : ''}
                   ${wiki ? `<a href="${h(wiki)}" target="_blank" rel="noopener">📖 ${h(t('about'))}</a>` : ''}
                   <span class="approx ${it.verified === false ? '' : 'hidden'}" data-approx="${it.id}">≈ ${h(t('approxPin'))}</span>
