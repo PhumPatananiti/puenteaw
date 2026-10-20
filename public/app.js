@@ -14,7 +14,8 @@ const STORE_KEY = 'puenteaw.trips.v1'
 const S = {
   lang: 'en',
   provider: { id: '', label: '' },
-  trip: null, // { id, plan, people, split, hero, weather, packed, savedAt }
+  storage: 'browser', // 'server' when the backend has Postgres
+  trip: null, // { id, editKey?, owned, plan, people, split, hero, weather, packed, savedAt }
   tab: 'itinerary',
   mapDay: 'all',
   fx: { code: '', rate: null },
@@ -27,17 +28,56 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* full or blocked */ } },
 }
 const trips = () => store.get(STORE_KEY, [])
-let saveTimer = null
-function saveTrip() {
-  clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
-    if (!S.trip) return
-    const list = trips().filter((t) => t.id !== S.trip.id)
-    list.unshift({ ...S.trip, savedAt: Date.now() })
-    store.set(STORE_KEY, list.slice(0, 20))
-    renderTripCount()
-  }, 400)
+const tripData = (tr) => ({ plan: tr.plan, people: tr.people, split: tr.split, hero: tr.hero, weather: tr.weather, packed: tr.packed })
+
+/** The browser list holds the trips this person owns (a cache of the server copy when there is one). */
+function cacheTrip(trip, replaceId = trip.id) {
+  const list = trips().filter((x) => x.id !== trip.id && x.id !== replaceId)
+  list.unshift({ ...trip, savedAt: Date.now() })
+  store.set(STORE_KEY, list.slice(0, 30))
+  renderTripCount()
 }
+
+let saveTimer = null
+function saveTrip({ now = false } = {}) {
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(persist, now ? 0 : 600)
+}
+async function persist() {
+  const trip = S.trip
+  if (!trip?.owned) return // someone else's shared trip: nothing to save
+  cacheTrip(trip)
+  if (S.storage !== 'server') return
+  try {
+    if (!trip.editKey) {
+      // a trip made before the server had a database: upload it once
+      const r = await fetch('/api/trips', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ data: tripData(trip) }) })
+      if (!r.ok) throw new Error(String(r.status))
+      const { id, editKey } = await r.json()
+      const oldId = trip.id
+      Object.assign(trip, { id, editKey })
+      cacheTrip(trip, oldId)
+      if (S.trip === trip) { history.replaceState(null, '', `#trip=${id}`); renderShareState() }
+      return
+    }
+    const r = await fetch(`/api/trips/${enc(trip.id)}`, {
+      method: 'PUT', headers: { 'content-type': 'application/json', 'x-edit-key': trip.editKey }, body: JSON.stringify({ data: tripData(trip) }),
+    })
+    if (!r.ok) throw new Error(String(r.status))
+  } catch {
+    toast(t('saveFailed'))
+  }
+}
+
+function toast(msg) {
+  document.querySelector('.toast')?.remove()
+  const el = Object.assign(document.createElement('div'), { className: 'toast', textContent: msg, role: 'status' })
+  document.body.append(el)
+  setTimeout(() => el.remove(), 2600)
+}
+
+/** Only http(s) links from stored data reach an href or src. */
+const safeUrl = (u) => (/^https?:\/\//i.test(String(u ?? '')) ? String(u) : '')
 
 /* ── i18n ───────────────────────────────────────────────────────── */
 const t = (key, ...args) => {
@@ -107,6 +147,7 @@ async function loadProvider() {
   try {
     const r = await fetch('/api/health').then((x) => x.json())
     S.provider = { id: r.provider, label: r.label }
+    S.storage = r.storage === 'server' ? 'server' : 'browser'
     if (r.currency && !store.get('puenteaw.currency')) $('#currency').value = r.currency
   } catch { /* offline */ }
   renderProvider()
@@ -194,7 +235,12 @@ function handleEvent(ev, previousTrip) {
       // keep names the traveler already typed when refining the same trip
       const known = previousTrip?.people ?? []
       const people = Array.from({ length: count }, (_, i) => plan.travelerNames[i] || known[i] || t('person', i + 1))
-      S.trip = { id: previousTrip?.id ?? newId(), plan, people, split: {}, hero: previousTrip?.hero ?? null, weather: null, packed: {}, savedAt: Date.now() }
+      S.trip = {
+        id: ev.trip?.id ?? previousTrip?.id ?? newId(),
+        editKey: ev.trip?.editKey ?? previousTrip?.editKey,
+        owned: true,
+        plan, people, split: {}, hero: previousTrip?.hero ?? null, weather: null, packed: {}, savedAt: Date.now(),
+      }
       S.mapDay = 'all'
       S.tab = 'itinerary'
       $('#progress').classList.add('hidden')
@@ -202,6 +248,7 @@ function handleEvent(ev, previousTrip) {
       renderResult()
       $('#footnote').textContent = t('stagePhotos')
       location.hash = `trip=${S.trip.id}`
+      saveTrip({ now: true })
       $('#result').scrollIntoView({ behavior: 'smooth', block: 'start' })
       break
     }
@@ -239,6 +286,7 @@ function renderResult() {
   const showSample = S.provider.id === 'mock'
   $('#sampleNote').textContent = t('sampleNote')
   $('#sampleNote').classList.toggle('hidden', !showSample)
+  renderShareState()
   renderWeather()
   renderTabs()
   renderDays()
@@ -250,6 +298,13 @@ function renderResult() {
   $('#change').value = ''
 }
 
+function renderShareState() {
+  const shared = S.trip && !S.trip.owned
+  $('#sharedNote').classList.toggle('hidden', !shared)
+  $('#shareBtn').classList.toggle('hidden', !(S.storage === 'server' && S.trip?.editKey))
+  $('#refineForm').classList.toggle('hidden', shared)
+}
+
 function renderHero() {
   const { plan, hero } = S.trip
   $('#heroPlace').textContent = [plan.destination.name, plan.destination.country].filter(Boolean).join(' · ')
@@ -259,9 +314,9 @@ function renderHero() {
   const pills = [t('days', plan.days.length), t('travelers', S.trip.people.length), plan.budgetLevel, dates].filter(Boolean)
   $('#pills').innerHTML = pills.map((p) => `<span class="pill">${h(p)}</span>`).join('')
   const el = $('#hero')
-  if (hero?.url) {
-    el.style.backgroundImage = `url("${hero.url.replace(/"/g, '%22')}")`
-    $('#heroCredit').href = hero.link
+  if (safeUrl(hero?.url)) {
+    el.style.backgroundImage = `url("${safeUrl(hero.url).replace(/["\\()]/g, (c) => `%${c.charCodeAt(0).toString(16)}`)}")`
+    $('#heroCredit').href = safeUrl(hero.link) || '#'
     $('#heroCredit').textContent = `📷 ${hero.title} · Wikimedia`
     $('#heroCredit').classList.remove('hidden')
   } else {
@@ -299,10 +354,10 @@ function renderFootnote() {
 /* ── itinerary ──────────────────────────────────────────────────── */
 function photoInner(it) {
   const icon = `<div class="ph">${KIND_ICON[it.kind] ?? '📍'}</div>`
-  if (!it.photo?.url) return icon
+  if (!safeUrl(it.photo?.url)) return icon
   const credit = it.photo.source === 'nearby' ? `${t('nearbyPhoto')}: ${it.photo.title}` : it.photo.title
-  return `${icon}<img src="${h(it.photo.url)}" alt="${h(it.name)}" loading="lazy" onload="this.classList.add('loaded')" onerror="this.remove()">` +
-    `<a class="credit" href="${h(it.photo.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📷 ${h(credit)}</a>`
+  return `${icon}<img src="${h(safeUrl(it.photo.url))}" alt="${h(it.name)}" loading="lazy" onload="this.classList.add('loaded')" onerror="this.remove()">` +
+    `<a class="credit" href="${h(safeUrl(it.photo.link) || '#')}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📷 ${h(credit)}</a>`
 }
 
 function renderDays() {
@@ -323,7 +378,7 @@ function renderDays() {
       <ol class="stops">
         ${d.items.map((it, i) => {
           const prev = d.items[i - 1]
-          const wiki = it.photo?.source === 'wikipedia' ? it.photo.link : it.wikiTitle ? `https://en.wikipedia.org/wiki/${enc(it.wikiTitle)}` : ''
+          const wiki = it.photo?.source === 'wikipedia' ? safeUrl(it.photo.link) : it.wikiTitle ? `https://en.wikipedia.org/wiki/${enc(it.wikiTitle)}` : ''
           return `<li class="stop">
             <div class="stop-time"><div class="stop-num" style="background:${color}">${i + 1}</div><div class="stop-clock">${h(it.time)}</div></div>
             <article class="card" data-item="${it.id}" data-day="${d.day}">
@@ -523,10 +578,32 @@ function renderTripList() {
     ? list.map((tr) => `<li><div class="t" data-open="${tr.id}"><b>${h(tr.plan.title)}</b><span>${h(tr.plan.destination.name)} · ${h(t('days', tr.plan.days.length))} · ${h(new Date(tr.savedAt).toLocaleDateString(S.lang === 'th' ? 'th-TH' : 'en-GB'))}</span></div><button class="ghost" type="button" data-deltrip="${tr.id}">${h(t('delete'))}</button></li>`).join('')
     : `<li class="empty">${h(t('noTrips'))}</li>`
 }
-function openTrip(id) {
-  const tr = trips().find((x) => x.id === id)
-  if (!tr) return false
-  S.trip = { packed: {}, split: {}, ...tr }
+async function openTrip(id) {
+  const cached = trips().find((x) => x.id === id)
+  if (cached) showTrip({ packed: {}, split: {}, owned: true, ...cached })
+  if (S.storage !== 'server') return Boolean(cached)
+  try {
+    const r = await fetch(`/api/trips/${enc(id)}`, { headers: cached?.editKey ? { 'x-edit-key': cached.editKey } : {} })
+    if (r.status === 404) {
+      if (!cached) showError(t('notFound'))
+      else if (!cached.editKey) saveTrip({ now: true }) // saved before the server had a database: upload it
+      return Boolean(cached)
+    }
+    if (!r.ok) return Boolean(cached)
+    const j = await r.json()
+    const owned = Boolean(j.canEdit)
+    const trip = { packed: {}, split: {}, ...j.data, id: j.id, editKey: owned ? cached?.editKey : undefined, owned }
+    // the server copy wins unless this browser holds unsaved newer edits
+    if (!cached || !owned || new Date(j.updatedAt).getTime() >= (cached.savedAt ?? 0) - 2000) showTrip(trip)
+    return true
+  } catch {
+    return Boolean(cached)
+  }
+}
+
+function showTrip(trip) {
+  S.trip = trip
+  const id = trip.id
   S.tab = 'itinerary'
   S.mapDay = 'all'
   S.fx = { code: '', rate: null }
@@ -536,7 +613,6 @@ function openTrip(id) {
   $('#result').classList.remove('hidden')
   location.hash = `trip=${id}`
   renderResult()
-  return true
 }
 function resetToComposer() {
   S.trip = null
@@ -578,12 +654,27 @@ function bind() {
     e.preventDefault()
     const change = $('#change').value.trim()
     if (!change || !S.trip) return
-    runPlan({ previous: S.trip.plan, change, currency: S.trip.plan.currency }, { refine: true })
+    const own = S.trip.owned ? { tripId: S.trip.id, editKey: S.trip.editKey } : {}
+    runPlan({ previous: S.trip.plan, change, currency: S.trip.plan.currency, ...own }, { refine: true })
   })
 
   $('#newBtn').addEventListener('click', resetToComposer)
   $('#brand').addEventListener('click', (e) => { e.preventDefault(); resetToComposer() })
   $('#printBtn').addEventListener('click', () => window.print())
+  $('#shareBtn').addEventListener('click', async () => {
+    const url = `${location.origin}/#trip=${S.trip.id}`
+    try {
+      if (navigator.share && window.matchMedia('(pointer: coarse)').matches) await navigator.share({ title: S.trip.plan.title, url })
+      else { await navigator.clipboard.writeText(url); toast(t('linkCopied')) }
+    } catch { /* dismissed */ }
+  })
+  $('#saveCopyBtn').addEventListener('click', async () => {
+    const copy = { ...S.trip, id: newId(), editKey: undefined, owned: true }
+    S.trip = copy
+    await persist() // uploads it and gives it a new id and edit key
+    renderShareState()
+    location.hash = `trip=${S.trip.id}`
+  })
 
   document.querySelector('.tabs').addEventListener('click', (e) => {
     const b = e.target.closest('[data-tab]')
@@ -698,6 +789,10 @@ function bind() {
     if (open) { openTrip(open.dataset.open); $('#drawer').classList.add('hidden'); return }
     const del = e.target.closest('[data-deltrip]')
     if (del) {
+      const gone = trips().find((x) => x.id === del.dataset.deltrip)
+      if (S.storage === 'server' && gone?.editKey) {
+        fetch(`/api/trips/${enc(gone.id)}`, { method: 'DELETE', headers: { 'x-edit-key': gone.editKey } }).catch(() => {})
+      }
       store.set(STORE_KEY, trips().filter((x) => x.id !== del.dataset.deltrip))
       if (S.trip?.id === del.dataset.deltrip) resetToComposer()
       renderTripList()
@@ -732,6 +827,10 @@ if (savedCurrency) $('#currency').value = savedCurrency
 bind()
 applyLang()
 renderTripCount()
-loadProvider()
+await loadProvider()
 const fromHash = location.hash.match(/trip=([\w-]+)/)
 if (fromHash) openTrip(fromHash[1])
+window.addEventListener('hashchange', () => {
+  const m = location.hash.match(/trip=([\w-]+)/)
+  if (m && m[1] !== S.trip?.id) openTrip(m[1])
+})

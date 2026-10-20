@@ -12,6 +12,9 @@ export const config = {
   GOOGLE_API_KEY: env('GOOGLE_API_KEY'),
   GOOGLE_MODEL: env('GOOGLE_MODEL', 'gemini-3.5-flash-lite'),
   DEFAULT_CURRENCY: env('DEFAULT_CURRENCY', 'THB').toUpperCase(),
+  DATABASE_URL: env('DATABASE_URL'),
+  // auto = TLS except for localhost and Railway's private network
+  DATABASE_SSL: env('DATABASE_SSL', 'auto').toLowerCase(),
 }
 
 /** Wikipedia, Photon and Open-Meteo all ask callers to identify themselves. */
